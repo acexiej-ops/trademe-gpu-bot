@@ -1,48 +1,57 @@
 import os
 import time
+import threading
 import requests
 from bs4 import BeautifulSoup
 from flask import Flask, request, render_template_string, redirect, url_for
 
 app = Flask(__name__)
 
+# Configuration
 CONFIG = {
-    "keywords": ["gpu"],
-    "webhook_url": "",
-    "interval": 120,
+    "keywords": ["RTX 3070", "RTX 3080", "RTX 3060 Ti", "RTX 4070", "RTX 4080", "RTX 4090"],
+    "webhook_url": "https://discordapp.com/api/webhooks/1473576797038972948/UvHkKVEt5CNqlqRzYbOx6WYdPj8ySJN_JftKKrQQ7EafnhH4GHi5BbXcvJ9MIugxI7xZ",
+    "interval": 300,
     "seen_ids": set()
 }
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head><title>TradeMe Bot Dashboard</title></head>
-<body>
-    <h1>TradeMe Bot Settings</h1>
-    <form method=\"POST\">
-        <label>Discord Webhook URL:</label><br>
-        <input type=\"text\" name=\"webhook\" value=\"{{ config.webhook_url }}\" style=\"width:80%\"><br><br>
-        <label>Keywords (one per line):</label><br>
-        <textarea name=\"keywords\" rows=\"5\" style=\"width:80%\">{{ config.keywords | join("\
-") }}</textarea><br><br>
-        <label>Polling Interval (seconds):</label><br>
-        <input type=\"number\" name=\"interval\" value=\"{{ config.interval }}\"><br><br>
-        <button type=\"submit\">Save & Restart Bot</button>
-    </form>
-</body>
-</html>
-"""
+def send_discord_notification(listing):
+    if not CONFIG["webhook_url"]: return
+    data = {
+        "content": f"🚀 **New GPU Listing Found!**\
+**Title:** {listing['title']}\
+**Price:** {listing['price']}\
+**Link:** {listing['link']}"
+    }
+    try: requests.post(CONFIG["webhook_url"], json=data)
+    except Exception as e: print(f"Error sending to Discord: {e}")
 
-@app.route("/", methods=["GET", "POST"])
-def dashboard():
-    if request.method == "POST":
-        CONFIG["webhook_url"] = request.form.get("webhook")
-        CONFIG["keywords"] = [k.strip() for k in request.form.get("keywords").split("\
-") if k.strip()]
-        CONFIG["interval"] = int(request.form.get("interval", 120))
-        return redirect(url_for("dashboard"))
-    return render_template_string(HTML_TEMPLATE, config=CONFIG)
+def scrape_trademe():
+    print("Scraper started...")
+    while True:
+        for keyword in CONFIG["keywords"]:
+            url = f"https://www.trademe.co.nz/a/marketplace/computers/search?search_string={keyword.replace(' ', '%20')}&sort_order=expirydesc"
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                resp = requests.get(url, headers=headers)
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                listings = soup.find_all('tg-listing-card-v2') # Example selector
+                for l in listings:
+                    # Simplified extraction logic
+                    title = l.get('title') or "Unknown GPU"
+                    link = "https://www.trademe.co.nz" + l.find('a')['href']
+                    listing_id = link.split('/')[-1]
+                    if listing_id not in CONFIG["seen_ids"]:
+                        CONFIG["seen_ids"].add(listing_id)
+                        send_discord_notification({'title': title, 'price': 'Check link', 'link': link})
+            except Exception as e: print(f"Scrape error: {e}")
+        time.sleep(CONFIG["interval"])
 
-if __name__ == "__main__":
-    # In a real deployment, the bot logic would run in a background thread
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+@app.route('/')
+def index():
+    return "<h1>TradeMe GPU Bot is Running</h1><p>Monitoring for: " + ", ".join(CONFIG['keywords']) + "</p>"
+
+if __name__ == '__main__':
+    threading.Thread(target=scrape_trademe, daemon=True).start()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
