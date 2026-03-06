@@ -1,1 +1,48 @@
-import os\nimport time\nimport requests\nfrom bs4 import BeautifulSoup\nfrom flask import Flask, request, render_template_string, redirect, url_for\n\napp = Flask(__name__)\n\n# Simple in-memory config for demonstration\nCONFIG = {\n    'keywords': ['gpu'],\n    'webhook_url': '',\n    'interval': 120,\n    'seen_ids': set()\n}\n\nHTML_TEMPLATE = '''\n<!DOCTYPE html>\n<html>\n<head><title>TradeMe Bot Dashboard</title></head>\n<body>\n    <h1>TradeMe Bot Settings</h1>\n    <form method=\"POST\">\n        <label>Discord Webhook URL:</label><br>\n        <input type=\"text\" name=\"webhook\" value=\"{{ config.webhook_url }}\" style=\"width:80%\"><br><br>\n        <label>Keywords (one per line):</label><br>\n        <textarea name=\"keywords\" rows=\"5\" style=\"width:80%\">{{ config.keywords | join('\\\\n') }}</textarea><br><br>\n        <label>Interval (seconds):</label><br>\n        <input type=\"number\" name=\"interval\" value=\"{{ config.interval }}\"><br><br>\n        <button type=\"submit\">Save Settings</button>\n    </form>\n</body>\n</html>\n'''\n\n@app.route('/', methods=['GET', 'POST'])\ndef index():\n    if request.method == 'POST':\n        CONFIG['webhook_url'] = request.form.get('webhook')\n        CONFIG['keywords'] = request.form.get('keywords').splitlines()\n        CONFIG['interval'] = int(request.form.get('interval', 120))\n        return redirect(url_for('index'))\n    return render_template_string(HTML_TEMPLATE, config=CONFIG)\n\nif __name__ == '__main__':\n    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))\n
+import os
+import time
+import requests
+from bs4 import BeautifulSoup
+from flask import Flask, request, render_template_string, redirect, url_for
+
+app = Flask(__name__)
+
+CONFIG = {
+    "keywords": ["gpu"],
+    "webhook_url": "",
+    "interval": 120,
+    "seen_ids": set()
+}
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head><title>TradeMe Bot Dashboard</title></head>
+<body>
+    <h1>TradeMe Bot Settings</h1>
+    <form method=\"POST\">
+        <label>Discord Webhook URL:</label><br>
+        <input type=\"text\" name=\"webhook\" value=\"{{ config.webhook_url }}\" style=\"width:80%\"><br><br>
+        <label>Keywords (one per line):</label><br>
+        <textarea name=\"keywords\" rows=\"5\" style=\"width:80%\">{{ config.keywords | join("\
+") }}</textarea><br><br>
+        <label>Polling Interval (seconds):</label><br>
+        <input type=\"number\" name=\"interval\" value=\"{{ config.interval }}\"><br><br>
+        <button type=\"submit\">Save & Restart Bot</button>
+    </form>
+</body>
+</html>
+"""
+
+@app.route("/", methods=["GET", "POST"])
+def dashboard():
+    if request.method == "POST":
+        CONFIG["webhook_url"] = request.form.get("webhook")
+        CONFIG["keywords"] = [k.strip() for k in request.form.get("keywords").split("\
+") if k.strip()]
+        CONFIG["interval"] = int(request.form.get("interval", 120))
+        return redirect(url_for("dashboard"))
+    return render_template_string(HTML_TEMPLATE, config=CONFIG)
+
+if __name__ == "__main__":
+    # In a real deployment, the bot logic would run in a background thread
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
